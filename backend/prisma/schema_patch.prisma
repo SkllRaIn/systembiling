@@ -1,0 +1,55 @@
+// Добавить эти поля в модель User в schema.prisma
+
+// PATCH для model User — добавить после поля isActive:
+//
+//   emailVerified        Boolean   @default(false)
+//   emailVerifyToken     String?
+//   emailVerifyExpiry    DateTime?
+//   passwordResetToken   String?
+//   passwordResetExpiry  DateTime?
+
+// Полная обновлённая модель User:
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role     @default(CLIENT)
+  telegramId   String?
+  isActive     Boolean  @default(true)
+
+  // Email verification
+  emailVerified       Boolean   @default(false)
+  emailVerifyToken    String?
+  emailVerifyExpiry   DateTime?
+
+  // Password reset
+  passwordResetToken  String?
+  passwordResetExpiry DateTime?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Client billing
+  invoices      Invoice[]
+  subscriptions Subscription[]
+
+  // Ads billing
+  adAccount AdAccount?
+
+  // Tickets
+  ticketsCreated  Ticket[] @relation("TicketCreator")
+  ticketsAssigned Ticket[] @relation("TicketAssignee")
+  ticketComments  TicketComment[]
+
+  // Kanban tasks
+  tasksAssigned Task[] @relation("TaskAssignee")
+  tasksCreated  Task[] @relation("TaskCreator")
+
+  refreshTokens RefreshToken[]
+}
+
+// После изменения схемы выполните:
+// npx prisma migrate dev --name add_email_verification
