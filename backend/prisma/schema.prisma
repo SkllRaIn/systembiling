@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CLIENT
+  ADS_MANAGER
+  SYSADMIN
+  ADMIN
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TaskStatus {
+  TODO
+  IN_WORK
+  REVIEW
+  DONE
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  FINISHED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role     @default(CLIENT)
+  telegramId   String?
+  isActive     Boolean  @default(true)
+
+  // Email verification
+  emailVerified       Boolean   @default(false)
+  emailVerifyToken    String?
+  emailVerifyExpiry   DateTime?
+
+  // Password reset
+  passwordResetToken  String?
+  passwordResetExpiry DateTime?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Client billing
+  invoices     Invoice[]
+  subscriptions Subscription[]
+
+  // Ads billing
+  adAccount    AdAccount?
+
+  // Tickets (created by)
+  ticketsCreated Ticket[] @relation("TicketCreator")
+  // Tickets (assigned to sysadmin)
+  ticketsAssigned Ticket[] @relation("TicketAssignee")
+  ticketComments  TicketComment[]
+
+  // Kanban tasks
+  tasksAssigned Task[] @relation("TaskAssignee")
+  tasksCreated  Task[] @relation("TaskCreator")
+
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ─── CLIENT BILLING ───────────────────────────────────────────
+
+model Service {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  period      String?  // monthly / yearly / one-time
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  subscriptions Subscription[]
+  invoiceItems  InvoiceItem[]
+}
+
+model Subscription {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  serviceId   String
+  service     Service   @relation(fields: [serviceId], references: [id])
+  status      String    @default("active") // active / paused / cancelled
+  startDate   DateTime  @default(now())
+  nextBilling DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Invoice {
+  id          String        @id @default(uuid())
+  number      String        @unique
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  status      InvoiceStatus @default(PENDING)
+  totalAmount Decimal       @db.Decimal(10, 2)
+  paidAt      DateTime?
+  dueDate     DateTime?
+  notes       String?
+  createdAt   DateTime      @default(now())
+
+  items       InvoiceItem[]
+  payment     Payment?
+}
+
+model InvoiceItem {
+  id        String  @id @default(uuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id])
+  name      String
+  qty       Int     @default(1)
+  price     Decimal @db.Decimal(10, 2)
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  invoiceId     String   @unique
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  provider      String   // yukassa / robokassa / manual
+  externalId    String?
+  amount        Decimal  @db.Decimal(10, 2)
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+}
+
+// ─── ADS BILLING ──────────────────────────────────────────────
+
+model AdAccount {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  balance   Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  campaigns  Campaign[]
+  deposits   AdDeposit[]
+}
+
+model Campaign {
+  id          String         @id @default(uuid())
+  accountId   String
+  account     AdAccount      @relation(fields: [accountId], references: [id])
+  name        String
+  status      CampaignStatus @default(DRAFT)
+  budget      Decimal        @db.Decimal(10, 2)
+  spent       Decimal        @default(0) @db.Decimal(10, 2)
+  startDate   DateTime?
+  endDate     DateTime?
+  description String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  reports     CampaignReport[]
+}
+
+model CampaignReport {
+  id          String   @id @default(uuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+  date        DateTime @db.Date
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  spent       Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+}
+
+model AdDeposit {
+  id        String    @id @default(uuid())
+  accountId String
+  account   AdAccount @relation(fields: [accountId], references: [id])
+  amount    Decimal   @db.Decimal(10, 2)
+  provider  String
+  status    String    @default("pending")
+  createdAt DateTime  @default(now())
+}
+
+// ─── TICKETS ──────────────────────────────────────────────────
+
+model Ticket {
+  id          String         @id @default(uuid())
+  number      Int            @default(autoincrement())
+  title       String
+  description String
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  creatorId   String
+  creator     User           @relation("TicketCreator", fields: [creatorId], references: [id])
+  assigneeId  String?
+  assignee    User?          @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  closedAt    DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  comments    TicketComment[]
+  attachments TicketAttachment[]
+}
+
+model TicketComment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  text      String
+  isInternal Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+model TicketAttachment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  filename  String
+  path      String
+  size      Int
+  createdAt DateTime @default(now())
+}
+
+// ─── KANBAN ───────────────────────────────────────────────────
+
+model Task {
+  id          String     @id @default(uuid())
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  priority    TicketPriority @default(MEDIUM)
+  position    Int        @default(0)
+  dueDate     DateTime?
+  creatorId   String
+  creator     User       @relation("TaskCreator", fields: [creatorId], references: [id])
+  assigneeId  String?
+  assignee    User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  ticketId    String?
+  tags        String[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
