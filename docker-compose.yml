@@ -1,0 +1,209 @@
+version: '3.9'
+
+services:
+  # ─── PostgreSQL ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: inzhenerim_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: inzhenerim
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: inzhenerim
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inzhenerim"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ───────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: inzhenerim_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Postfix + Dovecot (mail server) ─────────────────────────
+  mailserver:
+    image: docker.io/mailserver/docker-mailserver:latest
+    container_name: inzhenerim_mail
+    hostname: mail
+    domainname: ${MAIL_DOMAIN:-inzhenerim.ru}
+    restart: unless-stopped
+    ports:
+      - "25:25"    # SMTP (входящая)
+      - "465:465"  # SMTPS
+      - "587:587"  # SMTP submission (исходящая с TLS)
+      - "993:993"  # IMAPS
+      - "143:143"  # IMAP
+    volumes:
+      - mail_data:/var/mail
+      - mail_state:/var/mail-state
+      - mail_logs:/var/log/mail
+      - mail_config:/tmp/docker-mailserver
+      - /etc/localtime:/etc/localtime:ro
+      # SSL сертификаты (Let's Encrypt)
+      - ${LETSENCRYPT_PATH:-./certs}:/etc/letsencrypt:ro
+    environment:
+      ENABLE_RSPAMD: 1
+      ENABLE_CLAMAV: 0
+      ENABLE_FAIL2BAN: 1
+      ENABLE_POSTGREY: 0
+      POSTMASTER_ADDRESS: postmaster@${MAIL_DOMAIN:-inzhenerim.ru}
+      PERMIT_DOCKER: network
+      SSL_TYPE: letsencrypt
+      # Домен
+      OVERRIDE_HOSTNAME: mail.${MAIL_DOMAIN:-inzhenerim.ru}
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - internal
+      - external
+
+  # ─── Roundcube (webmail) ─────────────────────────────────────
+  roundcube:
+    image: roundcube/roundcubemail:latest
+    container_name: inzhenerim_roundcube
+    restart: unless-stopped
+    depends_on:
+      - mailserver
+      - postgres
+    environment:
+      ROUNDCUBEMAIL_DEFAULT_HOST: ssl://mailserver
+      ROUNDCUBEMAIL_DEFAULT_PORT: 993
+      ROUNDCUBEMAIL_SMTP_SERVER: tls://mailserver
+      ROUNDCUBEMAIL_SMTP_PORT: 587
+      ROUNDCUBEMAIL_DB_TYPE: pgsql
+      ROUNDCUBEMAIL_DB_HOST: postgres
+      ROUNDCUBEMAIL_DB_PORT: 5432
+      ROUNDCUBEMAIL_DB_USER: inzhenerim
+      ROUNDCUBEMAIL_DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      ROUNDCUBEMAIL_DB_NAME: roundcube
+      ROUNDCUBEMAIL_SKIN: elastic
+      ROUNDCUBEMAIL_PLUGINS: archive,zipdownload,managesieve
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.roundcube.rule=Host(`mail.${MAIL_DOMAIN:-inzhenerim.ru}`)"
+      - "traefik.http.routers.roundcube.entrypoints=websecure"
+      - "traefik.http.routers.roundcube.tls.certresolver=letsencrypt"
+      - "traefik.http.services.roundcube.loadbalancer.server.port=80"
+
+  # ─── Backend API ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: inzhenerim_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://inzhenerim:${POSTGRES_PASSWORD:-changeme}@postgres:5432/inzhenerim
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change_me_jwt_secret}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_me_refresh_secret}
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 30d
+      PORT: 3001
+      CLIENT_URL: https://${APP_DOMAIN:-inzhenerim.ru}
+      # SMTP — через свой mailserver
+      SMTP_HOST: mailserver
+      SMTP_PORT: 587
+      SMTP_USER: noreply@${MAIL_DOMAIN:-inzhenerim.ru}
+      SMTP_PASS: ${SMTP_PASS:-}
+      # Или через внешний SMTP (например Yandex/Gmail):
+      # SMTP_HOST: smtp.yandex.ru
+      # SMTP_PORT: 587
+      # SMTP_USER: noreply@inzhenerim.ru
+      # SMTP_PASS: ваш_пароль
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      UPLOAD_DIR: /app/uploads
+      MAX_FILE_SIZE: 10485760
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@inzhenerim.ru}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme_admin}
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`${APP_DOMAIN:-inzhenerim.ru}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=3001"
+
+  # ─── Frontend (Nginx) ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: inzhenerim_web
+    restart: unless-stopped
+    networks:
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${APP_DOMAIN:-inzhenerim.ru}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+
+  # ─── Traefik (reverse proxy + SSL) ───────────────────────────
+  traefik:
+    image: traefik:v3.0
+    container_name: inzhenerim_traefik
+    restart: unless-stopped
+    command:
+      - --api.dashboard=false
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.email=${ADMIN_EMAIL:-admin@inzhenerim.ru}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt_data:/letsencrypt
+    networks:
+      - internal
+      - external
+
+volumes:
+  postgres_data:
+  redis_data:
+  mail_data:
+  mail_state:
+  mail_logs:
+  mail_config:
+  uploads_data:
+  letsencrypt_data:
+
+networks:
+  internal:
+    driver: bridge
+  external:
+    driver: bridge
