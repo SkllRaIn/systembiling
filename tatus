@@ -1,0 +1,73 @@
+[33mcommit 02b8367b6482fe6f75b875b124eeed8af6de40bd[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m)[m
+Author: КомиссаровК.А. - Системный администратор <Komissarovka@sportavto35.ru>
+Date:   Fri Jun 19 14:56:48 2026 +0300
+
+    Initial commit
+
+ .env.example                                     |   30 [32m+[m
+ README.md                                        |  636 [32m++++[m
+ backend/.env.example                             |   30 [32m+[m
+ backend/.gitignore                               |    5 [32m+[m
+ backend/Dockerfile                               |   21 [32m+[m
+ backend/package-lock.json                        | 3793 [32m++++++++++++++++++++++[m
+ backend/package.json                             |   31 [32m+[m
+ backend/prisma/schema.prisma                     |  279 [32m++[m
+ backend/src/index.js                             |   44 [32m+[m
+ backend/src/middleware/auth.js                   |   25 [32m+[m
+ backend/src/middleware/errorHandler.js           |   50 [32m+[m
+ backend/src/routes/ads.js                        |  113 [32m+[m
+ backend/src/routes/auth.js                       |  302 [32m++[m
+ backend/src/routes/invoices.js                   |  103 [32m+[m
+ backend/src/routes/payments.js                   |   44 [32m+[m
+ backend/src/routes/services.js                   |   37 [32m+[m
+ backend/src/routes/tasks.js                      |  111 [32m+[m
+ backend/src/routes/tickets.js                    |  146 [32m+[m
+ backend/src/routes/users.js                      |  248 [32m++[m
+ backend/src/services/notifications.js            |  276 [32m++[m
+ backend/src/utils/jwt.js                         |   17 [32m+[m
+ backend/src/utils/prisma.js                      |    7 [32m+[m
+ backend/src/utils/seed.js                        |   50 [32m+[m
+ backend/uploads/.gitkeep                         |    0
+ docker-compose.yml                               |  209 [32m++[m
+ frontend/.gitignore                              |    4 [32m+[m
+ frontend/Dockerfile                              |   20 [32m+[m
+ frontend/index.html                              |   15 [32m+[m
+ frontend/nginx.conf                              |   44 [32m+[m
+ frontend/package-lock.json                       | 3092 [32m++++++++++++++++++[m
+ frontend/package.json                            |   30 [32m+[m
+ frontend/postcss.config.js                       |    6 [32m+[m
+ frontend/src/App.jsx                             |  106 [32m+[m
+ frontend/src/components/.gitkeep                 |    0
+ frontend/src/index.css                           |   36 [32m+[m
+ frontend/src/layouts/.gitkeep                    |    0
+ frontend/src/lib/api.js                          |   53 [32m+[m
+ frontend/src/main.jsx                            |   13 [32m+[m
+ frontend/src/pages/admin/AdminDashboard.jsx      |  149 [32m+[m
+ frontend/src/pages/admin/AdminInvoices.jsx       |  188 [32m++[m
+ frontend/src/pages/admin/AdminLayout.jsx         |   75 [32m+[m
+ frontend/src/pages/admin/AdminServices.jsx       |  159 [32m+[m
+ frontend/src/pages/admin/AdminUsers.jsx          |  506 [32m+++[m
+ frontend/src/pages/ads/AdsCampaigns.jsx          |  153 [32m+[m
+ frontend/src/pages/ads/AdsDashboard.jsx          |   87 [32m+[m
+ frontend/src/pages/ads/AdsDeposit.jsx            |  113 [32m+[m
+ frontend/src/pages/ads/AdsLayout.jsx             |   57 [32m+[m
+ frontend/src/pages/client/ClientDashboard.jsx    |  108 [32m+[m
+ frontend/src/pages/client/ClientInvoices.jsx     |   93 [32m+[m
+ frontend/src/pages/client/ClientLayout.jsx       |   57 [32m+[m
+ frontend/src/pages/client/ClientTicketDetail.jsx |   93 [32m+[m
+ frontend/src/pages/client/ClientTickets.jsx      |  113 [32m+[m
+ frontend/src/pages/public/ForgotPasswordPage.jsx |   96 [32m+[m
+ frontend/src/pages/public/LandingPage.jsx        |  357 [32m++[m
+ frontend/src/pages/public/LoginPage.jsx          |  102 [32m+[m
+ frontend/src/pages/public/PrivacyPage.jsx        |  187 [32m++[m
+ frontend/src/pages/public/RegisterPage.jsx       |  220 [32m++[m
+ frontend/src/pages/public/ResetPasswordPage.jsx  |  123 [32m+[m
+ frontend/src/pages/public/VerifyEmailPage.jsx    |   66 [32m+[m
+ frontend/src/pages/sysadmin/KanbanBoard.jsx      |  177 [32m+[m
+ frontend/src/pages/sysadmin/StaffLayout.jsx      |   49 [32m+[m
+ frontend/src/pages/sysadmin/TicketDetail.jsx     |  177 [32m+[m
+ frontend/src/pages/sysadmin/TicketQueue.jsx      |   89 [32m+[m
+ frontend/src/store/auth.js                       |   39 [32m+[m
+ frontend/tailwind.config.js                      |   21 [32m+[m
+ frontend/vite.config.js                          |   13 [32m+[m
+ 66 files changed, 13693 insertions(+)
